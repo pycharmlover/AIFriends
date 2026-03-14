@@ -9,21 +9,22 @@ from web.models.user import UserProfile
 class LoginView(APIView):
     def post(self, request, *args, **kwargs):
         try:
-            username = request.data['username'].strip()
-            password = request.data['password'].strip()
+            username = request.data.get("username").strip()
+            password = request.data.get("password").strip()
             if not username or not password:
                 return Response({
                     'result': '用户名和密码不能为空'
                 })
-            user= authenticate(username=username, password=password)
-            if user is not None: # 用户名和密码正确
+            user = authenticate(username=username, password=password)
+            if user:  # 用户名密码正确
                 user_profile = UserProfile.objects.get(user=user)
-                refresh = RefreshToken.for_user(user) #生成jwt
+                refresh = RefreshToken.for_user(user)  # 生成jwt
                 response = Response({
                     'result': 'success',
                     'access': str(refresh.access_token),
-                    'user_id': user.username,
-                    'photo': user_profile.photo.url, #必须加url
+                    'user_id': user.id,
+                    'username': user.username,
+                    'photo': user_profile.photo.url,  # 必须加url！！！
                     'profile': user_profile.profile,
                 })
                 response.set_cookie(
@@ -32,15 +33,13 @@ class LoginView(APIView):
                     httponly=True,
                     samesite='Lax',
                     secure=True,
-                    max_age=86400 * 7, # 7天有效
+                    max_age=86400 * 7,
                 )
                 return response
             return Response({
                 'result': '用户名或密码错误'
             })
         except:
-            # import traceback
-            # print(traceback.print_exc())
             return Response({
-                'result': '系统异常，请稍后重试',
+                'result': '系统异常，请稍后重试'
             })
