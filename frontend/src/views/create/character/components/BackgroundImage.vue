@@ -84,7 +84,7 @@ defineExpose({
 
   <dialog ref='modal-ref' class="modal">
     <div class="modal-box transition-none max-w-2xl">
-      <button @click="modalRef.close()" class="btn btn-sm  btn-circle btn-ghost absolute right-2 top-2">X</button>
+      <button @click="modalRef.close()" class="btn btn-sm  btn-circle btn-ghost absolute right-2 top-2">✕</button>
 
       <div ref="croppie-ref" class="flex flex-col my-4"></div>
 
