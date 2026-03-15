@@ -68,17 +68,32 @@ class MessageChatView(APIView):
         def event_stream():
             full_output = ''
             full_usage = {}
+            started = False
+
             for msg, metadata in app.stream(inputs, stream_mode="messages"):
-                if isinstance(msg, BaseMessageChunk):
-                    if msg.content:
-                        full_output += msg.content
-                        yield f'data: {json.dumps({'content': msg.content}, ensure_ascii=False)}\n\n'
-                    if hasattr(msg, 'usage_metadata') and msg.usage_metadata:
-                        full_usage = msg.usage_metadata
-            yield 'data: [DONE]\n\n'
+                if not isinstance(msg, BaseMessageChunk):
+                    continue
+
+                if hasattr(msg, 'usage_metadata') and msg.usage_metadata:
+                    full_usage = msg.usage_metadata
+
+                content = msg.content or ''
+
+                # 跳过开头的纯空白内容
+                if not started and not content.strip():
+                    continue
+
+                if content:
+                    started = True
+                    full_output += content
+                    yield f"data: {json.dumps({'content': content}, ensure_ascii=False)}\n\n"
+
+            yield "data: [DONE]\n\n"
+
             input_tokens = full_usage.get('input_tokens', 0)
             output_tokens = full_usage.get('output_tokens', 0)
             total_tokens = full_usage.get('total_tokens', 0)
+
             Message.objects.create(
                 friend=friend,
                 user_message=message[:500],
@@ -91,6 +106,7 @@ class MessageChatView(APIView):
                 output_tokens=output_tokens,
                 total_tokens=total_tokens,
             )
+
             if Message.objects.filter(friend=friend).count() % 1 == 0:
                 update_memory(friend)
 
