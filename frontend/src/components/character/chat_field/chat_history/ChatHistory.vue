@@ -112,6 +112,7 @@ defineExpose({
         :key="message.id"
         :message="message"
         :character="character"
+        :friendId="friendId"
     />
   </div>
 </template>

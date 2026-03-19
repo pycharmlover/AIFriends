@@ -1,8 +1,9 @@
 <script setup>
 
 import {useUserStore} from "../../../../../stores/user.js";
+import PlayTts from "./tts/PlayTts.vue";
 
-defineProps(['message', 'character'])
+defineProps(['message', 'character', 'friendId'])
 
 const user = useUserStore()
 </script>
@@ -16,6 +17,7 @@ const user = useUserStore()
         </div>
       </div>
       <div class="chat-bubble whitespace-pre-wrap break-all">{{ message.content }}</div>
+      <PlayTts :text="message.content" :friendId="friendId" />
     </div>
     <div v-else class="chat chat-end">
       <div class="chat-image avatar">
