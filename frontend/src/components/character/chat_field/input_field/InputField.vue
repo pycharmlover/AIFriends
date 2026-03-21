@@ -2,22 +2,33 @@
 
 import SendIcon from "../../icons/SendIcon.vue";
 import MicIcon from "../../icons/MicIcon.vue";
+import CameraIcon from "../../icons/CameraIcon.vue";
 import {onUnmounted, ref, useTemplateRef} from "vue";
 import streamApi from "../../../../js/http/streamApi.js";
+import visionApi from "../../../../js/http/visionApi.js";
 import Microphone from "./Microphone.vue";
 
 const props = defineProps(['friendId'])
 const emit = defineEmits(['pushBackMessage', 'addToLastMessage'])
 const inputRef = useTemplateRef('input-ref')
+const videoRef = useTemplateRef('video-ref')
+const canvasRef = useTemplateRef('canvas-ref')
 const message = ref('')
 let processId = 0
 const showMic = ref(false)
+const cameraActive = ref(false)
+let stream = ref(null)
+let frameInterval = ref(null)
+let visionInProgress = false  // 防止并发推理
+const cameraPosition = ref({ x: 20, y: 420 })  // 摄像头浮窗位置，默认在左下角输入栏上方
+let isDragging = false
+let dragOffset = { x: 0, y: 0 }
 
 let mediaSource = null;
 let sourceBuffer = null;
-let audioPlayer = new Audio(); // 全局播放器实例
-let audioQueue = [];           // 待写入 Buffer 的二进制队列
-let isUpdating = false;        // Buffer 是否正在写入
+let audioPlayer = new Audio();
+let audioQueue = [];
+let isUpdating = false;
 
 const initAudioStream = () => {
     audioPlayer.pause();
@@ -35,7 +46,7 @@ const initAudioStream = () => {
                 processQueue();
             });
         } catch (e) {
-            console.error("MSE AddSourceBuffer Error:", e);
+            // console.error("MSE AddSourceBuffer Error:", e);
         }
     });
 
@@ -52,7 +63,7 @@ const processQueue = () => {
     try {
         sourceBuffer.appendBuffer(chunk);
     } catch (e) {
-        console.error("SourceBuffer Append Error:", e);
+        // console.error("SourceBuffer Append Error:", e);
         isUpdating = false;
     }
 };
@@ -78,7 +89,7 @@ const stopAudio = () => {
     }
 };
 
-const handleAudioChunk = (base64Data) => {  // 将语音片段添加到播放器队列中
+const handleAudioChunk = (base64Data) => {
     try {
         const binaryString = atob(base64Data);
         const len = binaryString.length;
@@ -90,17 +101,136 @@ const handleAudioChunk = (base64Data) => {  // 将语音片段添加到播放器
         audioQueue.push(bytes);
         processQueue();
     } catch (e) {
-        console.error("Base64 Decode Error:", e);
+        // console.error("Base64 Decode Error:", e);
     }
 };
 
 onUnmounted(() => {
     audioPlayer.pause();
     audioPlayer.src = '';
+    stopCamera();
 });
 
 function focus() {
   inputRef.value.focus()
+}
+
+async function startCamera() {
+  try {
+    stream.value = await navigator.mediaDevices.getUserMedia({
+      video: { width: { ideal: 640 }, height: { ideal: 480 } },
+      audio: false
+    })
+    
+    // 先设置 cameraActive 为 true，让 video 元素挂载
+    cameraActive.value = true
+
+    // 等待 video 元素挂载
+    await new Promise(resolve => setTimeout(resolve, 200))
+    
+    if (videoRef.value) {
+      videoRef.value.srcObject = stream.value
+
+      // 不再自动抽帧，改为手动触发
+    } else {
+      // console.error("[DEBUG] startCamera: videoRef 仍为 null");
+    }
+  } catch (err) {
+    cameraActive.value = false
+  }
+}
+
+function stopCamera() {
+  if (stream.value) {
+    stream.value.getTracks().forEach(track => track.stop())
+    stream.value = null
+  }
+  if (frameInterval.value) {
+    clearInterval(frameInterval.value)
+    frameInterval.value = null
+  }
+  cameraActive.value = false
+}
+
+function captureFrame() {
+  if (!videoRef.value || !canvasRef.value) return
+  if (!message.value.trim()) {
+    // console.log("[DEBUG] captureFrame: 提示词为空，跳过");
+    return
+  }
+
+  // console.log("[DEBUG] captureFrame: 开始抽帧");
+  const ctx = canvasRef.value.getContext('2d')
+  canvasRef.value.width = videoRef.value.videoWidth
+  canvasRef.value.height = videoRef.value.videoHeight
+  ctx.drawImage(videoRef.value, 0, 0)
+
+  const imageBase64 = canvasRef.value.toDataURL('image/jpeg', 0.8).split(',')[1]
+  handleVisionFrame(imageBase64)
+}
+
+async function handleVisionFrame(imageBase64, prompt) {
+  if (!prompt || !prompt.trim()) {
+    // console.log("[DEBUG] 提示词为空，跳过推理");
+    return
+  }
+
+  // 防止并发推理
+  if (visionInProgress) {
+    // console.log("[DEBUG] 推理进行中，跳过本次请求");
+    return
+  }
+
+  visionInProgress = true
+
+  try {
+    await visionApi(
+      props.friendId,
+      imageBase64,
+      prompt,
+      (data, isDone) => {
+        // console.log(`[DEBUG] 视觉推理回调 - isDone: ${isDone}, data: ${JSON.stringify(data).substring(0, 100)}`);
+        if (data.content) {
+          // console.log(`[DEBUG] 添加推理结果到聊天: ${data.content.substring(0, 50)}`);
+          emit('addToLastMessage', data.content)
+        }
+        
+        // 推理完成，重置标志
+        if (isDone) {
+          visionInProgress = false
+        }
+      },
+      (err) => {
+        visionInProgress = false
+      }
+    )
+  } catch (err) {
+    visionInProgress = false
+  }
+}
+
+function toggleCamera() {
+  if (cameraActive.value) {
+    stopCamera()
+  } else {
+    startCamera()
+  }
+}
+
+function handleCameraMouseDown(e) {
+  isDragging = true
+  dragOffset.x = e.clientX - cameraPosition.value.x
+  dragOffset.y = e.clientY - cameraPosition.value.y
+}
+
+function handleMouseMove(e) {
+  if (!isDragging) return
+  cameraPosition.value.x = e.clientX - dragOffset.x
+  cameraPosition.value.y = e.clientY - dragOffset.y
+}
+
+function handleMouseUp() {
+  isDragging = false
 }
 
 async function handleSend(event, audio_msg) {
@@ -112,6 +242,7 @@ async function handleSend(event, audio_msg) {
   }
   if (!content) return
 
+  // 初始化音频流（文本和摄像头模式都需要）
   initAudioStream()
 
   const curId = ++ processId
@@ -119,6 +250,43 @@ async function handleSend(event, audio_msg) {
 
   emit('pushBackMessage', {role: 'user', content: content, id: crypto.randomUUID()})
   emit('pushBackMessage', {role: 'ai', content: '', id: crypto.randomUUID()})
+
+  // 如果摄像头打开，使用视觉推理；否则使用文本对话
+  if (cameraActive.value) {
+    // 手动抽帧并推理
+    if (videoRef.value && canvasRef.value) {
+      const ctx = canvasRef.value.getContext('2d')
+      canvasRef.value.width = videoRef.value.videoWidth
+      canvasRef.value.height = videoRef.value.videoHeight
+      ctx.drawImage(videoRef.value, 0, 0)
+      const imageBase64 = canvasRef.value.toDataURL('image/jpeg', 0.8).split(',')[1]
+      
+      // 触发视觉推理
+      try {
+        await visionApi(
+          props.friendId,
+          imageBase64,
+          content,
+          (data, isDone) => {
+            if (curId !== processId) return
+            
+            if (data.content) {
+              emit('addToLastMessage', data.content)
+            }
+            if (data.audio) {
+              handleAudioChunk(data.audio)
+            }
+          },
+          (err) => {
+            // console.error(`[DEBUG] 视觉推理失败: ${err.message}`);
+          }
+        )
+      } catch (err) {
+        // console.error(`[DEBUG] 视觉推理错误: ${err.message}`);
+      }
+    }
+    return
+  }
 
   try {
     await streamApi('/api/friend/message/chat/', {
@@ -146,6 +314,7 @@ async function handleSend(event, audio_msg) {
 function close() {
   ++ processId
   showMic.value = false
+  stopCamera()
   stopAudio()
 }
 
@@ -161,21 +330,52 @@ defineExpose({
 </script>
 
 <template>
-  <form v-if="!showMic" @submit.prevent="handleSend" class="absolute bottom-4 left-2 h-12 w-86 flex items-center">
-    <input
-        ref="input-ref"
-        v-model="message"
-        class="input bg-black/30 backdrop-blur-sm text-white text-base w-full h-full rounded-2xl pr-20"
-        type="text"
-        placeholder="文本输入..."
+  <div v-if="!showMic" class="absolute bottom-4 left-2 w-86 flex flex-col gap-2" @mousemove="handleMouseMove" @mouseup="handleMouseUp" @mouseleave="handleMouseUp">
+    <!-- 摄像头浮窗 - 显示在聊天框外 -->
+    <div 
+      v-if="cameraActive" 
+      class="fixed bg-black rounded-lg overflow-hidden shadow-2xl cursor-move"
+      :style="{
+        left: cameraPosition.x + 'px',
+        top: cameraPosition.y + 'px',
+        width: '116px',
+        zIndex: 0x3f3f3f3f
+      }"
+      @mousedown="handleCameraMouseDown"
     >
-    <div @click="handleSend" class="absolute right-2 w-8 h-8 flex justify-center items-center cursor-pointer">
-      <SendIcon />
+      <video
+        ref="video-ref"
+        autoplay
+        playsinline
+        class="w-full h-auto"
+      />
+      <canvas ref="canvas-ref" class="hidden" />
+      <div class="absolute top-2 right-2 text-white text-xs bg-black/50 px-2 py-1 rounded pointer-events-none">
+        拖动移动
+      </div>
     </div>
-    <div @click="showMic = true" class="absolute right-10 w-8 h-8 flex justify-center items-center cursor-pointer">
-      <MicIcon />
-    </div>
-  </form>
+
+    <!-- 输入框 -->
+    <form @submit.prevent="handleSend" class="h-12 flex items-center">
+      <input
+          ref="input-ref"
+          v-model="message"
+          class="input bg-black/30 backdrop-blur-sm text-white text-base w-full h-full rounded-2xl pr-28"
+          type="text"
+          placeholder="文本输入..."
+      >
+      <div @click="handleSend" class="absolute right-2 w-8 h-8 flex justify-center items-center cursor-pointer">
+        <SendIcon />
+      </div>
+      <div @click="showMic = true" class="absolute right-10 w-8 h-8 flex justify-center items-center cursor-pointer">
+        <MicIcon />
+      </div>
+      <div @click="toggleCamera" class="absolute right-18 w-8 h-8 flex justify-center items-center cursor-pointer">
+        <CameraIcon />
+      </div>
+    </form>
+  </div>
+
   <Microphone
       v-else
       @close="showMic = false"

@@ -39,7 +39,7 @@ class ChatGraph:
         tools = [get_time, search_knowledge_base]
 
         llm = ChatOpenAI(
-            model='deepseek-v3.2',
+            model='qwen3.5-flash',
             openai_api_key=os.getenv('API_KEY_EMB'),
             openai_api_base=os.getenv('API_BASE_EMB'),
             streaming=True,

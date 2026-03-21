@@ -32,7 +32,7 @@ onMounted(async () => {
       curVoiceId.value = data.voices[0].id
     }
   } catch (err){
-    console.log(err)
+    // console.log(err)
   }
 })
 

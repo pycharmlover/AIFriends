@@ -33,12 +33,12 @@ defineExpose({
     <div class="flex gap-2 items-start">
       <select v-model="myVoice" @change="showUpload = myVoice === 'custom'" class="select flex-1">
         <option value="custom">自定义音色</option>
-        <option
+      <option
           v-for="voice in voiceList"
           :key="voice.id"
-          :value="voice.id"
-        >{{ voice.name }}</option>
-      </select>
+        :value="voice.id"
+      >{{ voice.name }}</option>
+    </select>
     </div>
     <div v-if="showUpload" class="mt-3">
       <UploadVoice :onVoiceCreated="handleVoiceCreated" />

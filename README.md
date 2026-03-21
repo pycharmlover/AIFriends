@@ -54,6 +54,8 @@ AIFriends/
 │   │   │   │       ├── chat/
 │   │   │   │       │   ├── chat.py       # SSE 流式对话（LLM 推理与 TTS 合成并发输出）
 │   │   │   │       │   └── graph.py      # LangGraph 对话图定义
+│   │   │   │       ├── vision/
+│   │   │   │       │   └── stream_vision.py  # 视觉推理接口（接收图像 + 文本提示，返回推理结果 + 音频）
 │   │   │   │       ├── memory/           # 长期记忆管理
 │   │   │   │       │   ├── graph.py      # 记忆提取 LangGraph 图
 │   │   │   │       │   └── update.py     # 触发记忆更新（每轮对话后异步执行）
@@ -118,7 +120,8 @@ AIFriends/
     │   │   │   └── config.js             # 环境配置（vue 开发 / django 开发 / cloud 生产 三套 URL）
     │   │   ├── http/
     │   │   │   ├── api.js                # Axios 封装（自动附加 Bearer token；401 时静默刷新 token 并重试原请求）
-    │   │   │   └── streamApi.js          # SSE 流式请求封装（接收 AI 文字回复 + Base64 音频流）
+    │   │   │   ├── streamApi.js          # SSE 流式请求封装（接收 AI 文字回复 + Base64 音频流）
+    │   │   │   └── visionApi.js          # 视觉推理 SSE 流式请求封装（接收推理结果 + 音频）
     │   │   └── utils/
     │   │       └── base64_to_file.js     # Base64 字符串转 File 对象工具函数
     │   ├── components/
@@ -143,7 +146,7 @@ AIFriends/
     │   │   │   │   ├── KeyboardIcon.vue
     │   │   │   │   └── Horn.vue             # 小喇叭图标（用于 TTS 重放按钮）
     │   │   │   └── chat_field/          # 聊天区域组件树
-    │   │   │       ├── ChatField.vue     # 聊天区域容器（整合下方各子组件）
+    │   │   │       ├── ChatField.vue     # 聊天区域容器（整合下方各子组件，支持拖动右下角缩放）
     │   │   │       ├── character_photo_field/
     │   │   │       │   └── CharacterPhotoField.vue  # 角色头像与背景展示
     │   │   │       ├── chat_history/
@@ -153,7 +156,7 @@ AIFriends/
     │   │   │       │       └── tts/
     │   │   │       │           └── PlayTts.vue      # 小喇叭播放组件（点击后重新合成并播放当前消息语音）
     │   │   │       └── input_field/
-    │   │   │           ├── InputField.vue           # 文字输入框与发送按钮
+    │   │   │           ├── InputField.vue           # 文字输入框、发送按钮、摄像头浮窗（支持拖动）
     │   │   │           └── Microphone.vue           # 麦克风录音（集成 Silero VAD 语音端点检测）
     │   │   └── UserMenu.vue              # 用户菜单下拉（个人空间 / 资料 / 登出）
     │   └── views/
@@ -230,7 +233,9 @@ AIFriends/
 - **语音输入**：前端集成 Silero VAD 自动检测语音端点，录音完成后调用后端 ASR 接口转写为文字
 - **长期记忆**：每轮对话结束后异步提取关键信息，更新至好友的 memory 字段，下次对话时注入 System Prompt
 - **JWT 认证**：access token 存于内存，refresh token 存于 HttpOnly Cookie，Axios 拦截器自动无感刷新
-- **语音重放**：每条 AI 回复气泡下方附有小喇叭按钮，点击后调用独立 TTS 接口重新合成语音，全量接收音频块后合并解码播放 
+- **语音重放**：每条 AI 回复气泡下方附有小喇叭按钮，点击后调用独立 TTS 接口重新合成语音，全量接收音频块后合并解码播放
+- **视觉推理**：打开摄像头后，输入提示词并点击发送，AI 可分析摄像头画面内容并生成语音回复。摄像头浮窗可自由拖动位置
+- **聊天框缩放**：拖动聊天框右下角三角形手柄可自由缩放聊天窗口（0.5x ~ 2x），内部布局相对位置保持不变 
 
 ---
 

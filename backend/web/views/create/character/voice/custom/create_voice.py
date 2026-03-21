@@ -10,13 +10,13 @@ def create_voice(voice_url, prefix):
     }
 
     data = {
-        "model": "voice-enrollment",
-        "input": {
-            "action": "create_voice",
-            "target_model": "cosyvoice-v3-flash",
-            "prefix": prefix,
-            "url": voice_url,
-        }
+       "model": "voice-enrollment",
+       "input": {
+           "action": "create_voice",
+           "target_model": "cosyvoice-v3-flash",
+           "prefix": prefix,
+           "url": voice_url,
+       }
     }
     
     try:
