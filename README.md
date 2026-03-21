@@ -300,5 +300,47 @@ VOICE_URL=https://dashscope.aliyuncs.com/api/v1/services/audio/tts/customization
 > ```
 > 以确保数据库结构与代码保持同步。
 
+### 6. 生产环境部署
 
+**前置条件：** 已有配置好 Python 环境的服务器（当前使用的是阿里云 ECS），前端已构建并集成到后端
 
+**部署步骤：**
+
+1. **切换环境配置**
+
+修改 `frontend/src/js/config/config.js`，将 `platform` 改为 `'cloud'`：
+
+```javascript
+const platform = 'cloud'
+```
+
+2. **禁用调试模式**
+
+修改 `backend/backend/settings.py`：
+
+```python
+DEBUG = False
+```
+
+3. **上传后端代码至服务器**
+
+```bash
+scp -r backend/ user@server_ip:/path/to/backend
+```
+
+4. **收集静态文件**
+
+在服务器的 `backend/` 目录执行：
+
+```bash
+python3.14 manage.py collectstatic --noinput
+```
+
+5. **启动应用服务**
+
+使用 `tmux` 后台运行 Gunicorn（即使关闭终端也保持运行）：
+
+```bash
+tmux 
+gunicorn --workers 3 --graceful-timeout 3 --bind unix:/home/acs/backend/gunicorn.sock backend.wsgi:application
+```
