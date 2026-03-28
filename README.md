@@ -1,6 +1,6 @@
 # Aimi
 
-一个 AI 虚拟好友平台，用户可以创建自定义 AI 角色，并与其进行实时语音 / 文字聊天。后端基于 Django + LangChain，前端基于 Vue 3 + Vite。
+一个 AI 虚拟好友平台，用户可以创建自定义 AI 角色，并与其进行实时语音 / 文字聊天，并支持基于browser use的联网搜索。后端基于 Django + LangChain，前端基于 Vue 3 + Vite。
 
 ---
 
@@ -52,10 +52,11 @@ AIFriends/
 │   │   │   │   ├── remove.py             # 删除好友
 │   │   │   │   └── message/              # 消息相关
 │   │   │   │       ├── chat/
-│   │   │   │       │   ├── chat.py       # SSE 流式对话（LLM 推理与 TTS 合成并发输出）
+│   │   │   │       │   ├── chat.py       # SSE 流式对话（LLM 推理与 TTS 合成并发输出；支持联网搜索增强）
 │   │   │   │       │   └── graph.py      # LangGraph 对话图定义
 │   │   │   │       ├── vision/
-│   │   │   │       │   └── stream_vision.py  # 视觉推理接口（接收图像 + 文本提示，返回推理结果 + 音频）
+│   │   │   │       │   └── stream_vision.py  # 视觉推理接口（接收图像 + 文本提示，返回推理结果 + 音频；支持视觉联网搜索）
+│   │   │   │       ├── cancel.py         # 联网搜索取消接口（POST /api/friend/message/cancel/）
 │   │   │   │       ├── memory/           # 长期记忆管理
 │   │   │   │       │   ├── graph.py      # 记忆提取 LangGraph 图
 │   │   │   │       │   └── update.py     # 触发记忆更新（每轮对话后异步执行）
@@ -76,6 +77,11 @@ AIFriends/
 │   │   │   ├── 0005_alter_message_input.py  # 扩展 Message.input 字段长度
 │   │   │   ├── 0006_systemprompt.py      # 添加 SystemPrompt 模型
 │   │   │   └── 0007_voice_character_voice.py  # 添加 Voice 模型及 Character.voice 外键
+│   │   ├── services/                     # 业务服务层
+│   │   │   └── web_search/               # 联网搜索服务
+│   │   │       ├── __init__.py           # 导出 build_web_context_for_query
+│   │   │       ├── browser_executor.py   # browser-use 执行器（query 拆解、Chromium 搜索、结果提取、可取消）
+│   │   │       └── service.py            # 编排层（兜底降级、cancel_check 透传）
 │   │   ├── documents/                    # RAG / 向量检索模块
 │   │   │   ├── utils/                    # 文档处理工具
 │   │   │   └── lancedb_storage/          # LanceDB 本地向量数据库存储（已 gitignore）
@@ -219,6 +225,8 @@ AIFriends/
 | 语音合成（TTS） | CosyVoice v3（通过 WebSocket 与 LLM 并发流式合成） |
 | 语音识别（ASR） | Gummy Realtime（通过 WebSocket 实时转写 PCM 音频） |
 | 多模态视觉推理 | Qwen3.5-Flash（通过 LangChain 接收实时视频流 + 文本，返回推理结果） |
+| 联网搜索（文字模式） | browser-use + DeepSeek-V3（自动拆解查询、调用 Chromium 搜索网页、提取答案注入主模型上下文） |
+| 联网搜索（视觉模式） | Qwen/Qwen3.5-122B-A10B 先理解图像生成搜索词，再由 browser-use 执行搜索 |
 | 向量数据库 | LanceDB（本地存储，用于 RAG 长期记忆） |
 | 数据库 | SQLite（开发） |
 | 跨域 | django-cors-headers |
@@ -236,6 +244,8 @@ AIFriends/
 - **JWT 认证**：access token 存于内存，refresh token 存于 HttpOnly Cookie，Axios 拦截器自动无感刷新
 - **语音重放**：每条 AI 回复气泡下方附有小喇叭按钮，点击后调用独立 TTS 接口重新合成语音，全量接收音频块后合并解码播放
 - **视觉推理**：打开摄像头后，输入提示词并点击发送，AI 可分析摄像头画面内容并生成语音回复。摄像头浮窗可自由拖动位置
+- **联网搜索（文字模式）**：输入框点击地球图标开启联网，后端先用 DeepSeek-V3 对问题进行拆解，再调用 browser-use 驱动 Chromium 搜索网页提取答案，将结果注入主模型上下文后流式回复；搜索失败自动降级为普通聊天；关闭聊天框或重新发送时立即取消搜索
+- **联网搜索（视觉模式）**：开启摄像头同时开启联网，Qwen/Qwen3.5-122B-A10B 先理解当前画面 + 用户提问生成具体搜索词，再交由 browser-use 执行网页搜索，结果注入多模态主模型
 - **聊天框缩放**：拖动聊天框右下角三角形手柄可自由缩放聊天窗口（0.5x ~ 2x），内部布局相对位置保持不变 
 
 ---
@@ -257,6 +267,12 @@ conda activate aifriends
 
 ```bash
 pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
+```
+
+安装完成后，还需安装 browser-use 所需的 Chromium 浏览器驱动：
+
+```bash
+playwright install chromium
 ```
 
 ### 3. 初始化后端数据库
@@ -285,6 +301,9 @@ API_KEY_EMB=<你的阿里云百炼 API Key>
 API_BASE_EMB=https://dashscope.aliyuncs.com/compatible-mode/v1
 WSS_URL=wss://dashscope.aliyuncs.com/api-ws/v1/inference
 VOICE_URL=https://dashscope.aliyuncs.com/api/v1/services/audio/tts/customization
+API_KEY=<用于 browser-use 联网搜索的模型 API Key>
+API_BASE=<对应模型接口 base_url>
+MODEL=<browser-use 使用的模型名称，如 deepseek-ai/DeepSeek-V3.2>
 ```
 
 ### 5. 注意事项
