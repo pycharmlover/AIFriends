@@ -1,9 +1,5 @@
-import logging
 
 from .browser_executor import run_browser_search
-
-logger = logging.getLogger(__name__)
-
 
 def build_web_context_for_query(query: str) -> str:
     if not query:
@@ -15,7 +11,7 @@ def build_web_context_for_query(query: str) -> str:
         print(final_text)
         print("===================\n")
     except Exception:
-        logger.exception('Web search failed, falling back to empty context')
+        print('Web search failed, falling back to empty context')
         return ''
 
     if not final_text:

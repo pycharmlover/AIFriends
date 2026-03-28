@@ -1,7 +1,6 @@
 import asyncio
 import base64
 import json
-import logging
 import os
 import threading
 import uuid
@@ -19,8 +18,6 @@ from web.models.friend import Friend, Message, SystemPrompt
 from web.services.web_search import build_web_context_for_query
 from web.views.friend.message.chat.graph import ChatGraph
 from web.views.friend.message.memory.update import update_memory
-
-logger = logging.getLogger(__name__)
 
 
 class SSERenderer(BaseRenderer):
@@ -97,14 +94,6 @@ class MessageChatView(APIView):
         web_context = ''
         if enable_web_search:
             web_context = build_web_context_for_query(message)
-
-        logger.info(
-            'chat request friend_id=%s user_id=%s enable_web_search=%s web_search_success=%s',
-            friend_id,
-            request.user.id,
-            enable_web_search,
-            bool(web_context),
-        )
 
         app = ChatGraph.create_app()
 
