@@ -275,6 +275,19 @@ pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
 playwright install chromium
 ```
 
+### 3. （可选）安装 Redis
+
+联网搜索的「取消」功能支持两种模式，**本地开发无需安装 Redis**，系统会自动降级为内存模式：
+
+| 运行环境 | 取消机制 | 是否需要 Redis |
+|----------|----------|----------------|
+| 本地单进程（`python manage.py runserver`） | 内存 `threading.Event`，自动检测 | 不需要 |
+| 服务器多进程（Gunicorn `--workers N`） | Redis 跨进程共享标志 | **需要** |
+
+本地开发时，启动时若检测不到 Redis 会自动切换到内存模式，取消功能完全正常。
+
+> 如果想在本地也使用 Redis 模式（或部署到服务器），参见「[生产环境部署](#6-生产环境部署)」中的 Redis 安装步骤。
+
 ### 3. 初始化后端数据库
 
 进入 `backend/` 目录，依次执行：
@@ -361,11 +374,43 @@ scp -r backend/ user@server_ip:/path/to/backend
 python3.14 manage.py collectstatic --noinput
 ```
 
-5. **启动应用服务**
+5. **安装并启动 Redis（多进程部署必须）**
+
+Gunicorn 以多进程运行时，联网搜索的取消信号需要通过 Redis 跨进程共享，否则取消功能无效：
+
+```bash
+# 安装 Redis（Ubuntu/Debian）
+sudo apt install redis-server -y
+sudo systemctl enable redis-server
+sudo systemctl start redis-server
+
+# 验证 Redis 正常运行（应返回 PONG）
+redis-cli ping
+```
+
+Redis 默认监听 `127.0.0.1:6379`，与 Gunicorn 同机无需额外配置。如果 Redis 在其他机器，在 `.env` 中补充：
+
+```env
+REDIS_HOST=<Redis 服务器 IP>
+REDIS_PORT=6379
+REDIS_DB=0
+```
+
+6. **启动应用服务**
 
 使用 `tmux` 后台运行 Gunicorn（即使关闭终端也保持运行）：
 
 ```bash
-tmux 
+tmux
 gunicorn --workers 3 --graceful-timeout 3 --bind unix:/home/acs/backend/gunicorn.sock backend.wsgi:application --timeout 300
 ```
+
+> **本地 vs 服务器部署区别总结**
+>
+> | 项目 | 本地开发 | 服务器生产 |
+> |------|----------|------------|
+> | Django 启动方式 | `python manage.py runserver`（单进程） | Gunicorn `--workers N`（多进程） |
+> | Redis | 不需要，自动降级为内存模式 | **必须安装**，用于跨进程共享取消信号 |
+> | 前端模式 | `config.js` 中 `platform = 'vue'` 或 `'django'` | `platform = 'cloud'` |
+> | DEBUG | `True` | `False` |
+> | 静态文件 | Django 自动 serve | 需执行 `collectstatic`，由 Nginx 提供 |
