@@ -1,8 +1,10 @@
 # Aimi
 
-一个 AI 虚拟好友平台，用户可以创建自定义 AI 角色，并与其进行实时语音 / 文字聊天，并支持基于browser use的联网搜索。后端基于 Django + LangChain，前端基于 Vue 3 + Vite。
+一个 AI 虚拟好友平台，用户可以创建自定义 AI 角色，并与其进行实时语音 / 文字聊天，并支持视频流识别，基于browser use的联网搜索。后端基于 Django + LangChain，前端基于 Vue 3 + Vite。
 
 ---
+
+![AIFriends 页面预览](./page.png)
 
 ## 目录结构总览
 
